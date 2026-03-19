@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Deals Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; color: #333; }
+
+  header {
+    background: linear-gradient(135deg, #1a73e8, #0d47a1);
+    color: white;
+    padding: 20px 30px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+  }
+  header h1 { font-size: 1.6rem; }
+  #status { font-size: 0.85rem; opacity: 0.85; }
+  #countdown { font-size: 0.85rem; opacity: 0.85; }
+
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 20px;
+    padding: 30px 30px 0;
+  }
+  .card {
+    background: white;
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+    text-align: center;
+  }
+  .card .label { font-size: 0.85rem; color: #888; margin-bottom: 8px; }
+  .card .value { font-size: 1.8rem; font-weight: 700; color: #1a73e8; }
+  .card .sub { font-size: 0.8rem; color: #aaa; margin-top: 4px; }
+
+  .charts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+    gap: 20px;
+    padding: 20px 30px;
+  }
+  .chart-box {
+    background: white;
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+  }
+  .chart-box h3 { font-size: 1rem; color: #555; margin-bottom: 15px; }
+
+  .table-wrap {
+    margin: 0 30px 30px;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+    overflow: hidden;
+  }
+  .table-wrap h3 { padding: 18px 20px; font-size: 1rem; color: #555; border-bottom: 1px solid #eee; }
+  table { width: 100%; border-collapse: collapse; }
+  th { background: #f8f9fa; padding: 12px 16px; text-align: left; font-size: 0.82rem; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
+  td { padding: 12px 16px; border-top: 1px solid #f0f0f0; font-size: 0.92rem; }
+  tr:hover td { background: #f8fbff; }
+  .provize { font-weight: 600; color: #1a73e8; }
+
+  #loader { text-align: center; padding: 60px; color: #888; }
+  .spinner {
+    width: 36px; height: 36px;
+    border: 4px solid #e0e0e0;
+    border-top-color: #1a73e8;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin: 0 auto 16px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .error-box { background: #fff3f3; border: 1px solid #fcc; border-radius: 8px; padding: 20px; margin: 30px; color: #c00; }
+  .error-box h3 { margin-bottom: 8px; }
+  .error-box ol { margin-left: 20px; line-height: 1.8; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>📊 Deals Dashboard</h1>
+  <div>
+    <div id="status">Načítám data...</div>
+    <div id="countdown"></div>
+  </div>
+</header>
+
+<div id="loader"><div class="spinner"></div>Načítám data z Google Sheets...</div>
+
+<div id="error-box" style="display:none" class="error-box">
+  <h3>⚠️ Nepodařilo se načíst data</h3>
+  <p>Tento soubor musíte otevřít <strong>přímo v prohlížeči</strong> (ne přes claude.ai).</p>
+  <ol>
+    <li>Stáhněte soubor <strong>index.html</strong> (ikona stažení vpravo nahoře)</li>
+    <li>Najděte ho ve složce Stažené soubory</li>
+    <li>Dvojklikem ho otevřete v prohlížeči Chrome nebo Edge</li>
+  </ol>
+</div>
+
+<div id="content" style="display:none">
+  <div class="cards">
+    <div class="card">
+      <div class="label">Celkem dealů</div>
+      <div class="value" id="cnt-deals">—</div>
+    </div>
+    <div class="card">
+      <div class="label">Celková provize</div>
+      <div class="value" id="cnt-provize">—</div>
+      <div class="sub">Kč</div>
+    </div>
+    <div class="card">
+      <div class="label">Průměrná provize</div>
+      <div class="value" id="cnt-avg">—</div>
+      <div class="sub">Kč</div>
+    </div>
+    <div class="card">
+      <div class="label">Počet klientů</div>
+      <div class="value" id="cnt-klienti">—</div>
+    </div>
+  </div>
+
+  <div class="charts">
+    <div class="chart-box">
+      <h3>Provize podle měsíce</h3>
+      <canvas id="chartMonth"></canvas>
+    </div>
+    <div class="chart-box">
+      <h3>Top klienti podle provize</h3>
+      <canvas id="chartKlient"></canvas>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <h3>Všechny dealy</h3>
+    <table>
+      <thead>
+        <tr><th>#</th><th>Klient</th><th>Deal</th><th>Provize (Kč)</th><th>Month</th></tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+const CSV_URL = 'https://docs.google.com/spreadsheets/d/1nQhIBBd8k2bp0I1HSNcOAqtkfFKlKsGjraBJQMqEP4Y/gviz/tq?tqx=out:csv&gid=609760556';
+const INTERVAL = 30;
+let chartMonth, chartKlient, countdown;
+
+function parseCSV(text) {
+  const lines = text.trim().split('\n');
+  return lines.slice(1).map(line => {
+    const vals = [];
+    let cur = '', inQ = false;
+    for (const c of line) {
+      if (c === '"') inQ = !inQ;
+      else if (c === ',' && !inQ) { vals.push(cur.trim()); cur = ''; }
+      else cur += c;
+    }
+    vals.push(cur.trim());
+    return { Klient: vals[0]||'', Deal: vals[1]||'', Provize: vals[2]||'', Month: vals[3]||'' };
+  }).filter(r => r.Klient && r.Klient !== '' && r.Deal !== '');
+}
+
+function toNum(str) {
+  return parseFloat((str||'0').replace(/[^0-9.\-]/g,'')) || 0;
+}
+
+function fmt(n) {
+  return Math.round(n).toLocaleString('cs-CZ');
+}
+
+function renderCards(rows) {
+  const provize = rows.map(r => toNum(r.Provize));
+  const total = provize.reduce((a,b) => a+b, 0);
+  const avg = rows.length ? total/rows.length : 0;
+  const klienti = new Set(rows.map(r => r.Klient)).size;
+  document.getElementById('cnt-deals').textContent = rows.length;
+  document.getElementById('cnt-provize').textContent = fmt(total);
+  document.getElementById('cnt-avg').textContent = fmt(avg);
+  document.getElementById('cnt-klienti').textContent = klienti;
+}
+
+function renderCharts(rows) {
+  const byMonth = {};
+  rows.filter(r => r.Month).forEach(r => {
+    byMonth[r.Month] = (byMonth[r.Month]||0) + toNum(r.Provize);
+  });
+  if (chartMonth) chartMonth.destroy();
+  chartMonth = new Chart(document.getElementById('chartMonth'), {
+    type: 'bar',
+    data: {
+      labels: Object.keys(byMonth),
+      datasets: [{ label: 'Provize (Kč)', data: Object.values(byMonth), backgroundColor: '#1a73e8', borderRadius: 6 }]
+    },
+    options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+  });
+
+  const byKlient = {};
+  rows.forEach(r => {
+    const k = r.Klient.split(' - ')[0].split(' (')[0];
+    byKlient[k] = (byKlient[k]||0) + toNum(r.Provize);
+  });
+  const sorted = Object.entries(byKlient).sort((a,b) => b[1]-a[1]).slice(0,8);
+  if (chartKlient) chartKlient.destroy();
+  chartKlient = new Chart(document.getElementById('chartKlient'), {
+    type: 'doughnut',
+    data: {
+      labels: sorted.map(x => x[0]),
+      datasets: [{ data: sorted.map(x => x[1]), backgroundColor: ['#1a73e8','#34a853','#fbbc04','#ea4335','#9c27b0','#00acc1','#ff7043','#8bc34a'] }]
+    },
+    options: { plugins: { legend: { position: 'right', labels: { font: { size: 11 } } } } }
+  });
+}
+
+function renderTable(rows) {
+  document.getElementById('tbody').innerHTML = rows.map((r,i) => `
+    <tr>
+      <td>${i+1}</td>
+      <td>${r.Klient}</td>
+      <td>${r.Deal}</td>
+      <td class="provize">${fmt(toNum(r.Provize))} Kč</td>
+      <td>${r.Month||'—'}</td>
+    </tr>
+  `).join('');
+}
+
+async function fetchData() {
+  try {
+    const res = await fetch(CSV_URL);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const text = await res.text();
+    const rows = parseCSV(text);
+    document.getElementById('loader').style.display = 'none';
+    document.getElementById('error-box').style.display = 'none';
+    document.getElementById('content').style.display = 'block';
+    renderCards(rows);
+    renderCharts(rows);
+    renderTable(rows);
+    const now = new Date();
+    document.getElementById('status').textContent = `Aktualizováno: ${now.toLocaleTimeString('cs-CZ')}`;
+  } catch(e) {
+    document.getElementById('loader').style.display = 'none';
+    document.getElementById('error-box').style.display = 'block';
+  }
+}
+
+function startCountdown() {
+  let sec = INTERVAL;
+  clearInterval(countdown);
+  countdown = setInterval(() => {
+    sec--;
+    document.getElementById('countdown').textContent = `Další aktualizace za ${sec}s`;
+    if (sec <= 0) { sec = INTERVAL; fetchData(); }
+  }, 1000);
+}
+
+fetchData();
+startCountdown();
+</script>
+</body>
+</html>
