@@ -6,7 +6,19 @@
 <title>Deals Dashboard</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
+  * { margin: 0; padding: 0; box-sizing: border-box;   // Graf In Progress vs Uzavřené
+  const closed = rows.filter(r => r.Month).length;
+  const inProg = rows.filter(r => !r.Month).length;
+  if (chartInProgress) chartInProgress.destroy();
+  chartInProgress = new Chart(document.getElementById('chartInProgress'), {
+    type: 'doughnut',
+    data: {
+      labels: ['Uzavřené', 'In Progress'],
+      datasets: [{ data: [closed, inProg], backgroundColor: ['#34a853', '#ff7043'] }]
+    },
+    options: { plugins: { legend: { position: 'right' } } }
+  });
+}
   body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; color: #333; }
 
   header {
@@ -111,6 +123,16 @@
       <div class="value" id="cnt-deals">—</div>
     </div>
     <div class="card">
+      <div class="label">Celková hodnota dealů</div>
+      <div class="value" id="cnt-deals-value">—</div>
+      <div class="sub">Kč</div>
+    </div>
+    <div class="card">
+      <div class="label">Průměrná hodnota dealu</div>
+      <div class="value" id="cnt-deals-avg">—</div>
+      <div class="sub">Kč</div>
+    </div>
+    <div class="card">
       <div class="label">Celková provize</div>
       <div class="value" id="cnt-provize">—</div>
       <div class="sub">Kč</div>
@@ -124,6 +146,16 @@
       <div class="label">Počet klientů</div>
       <div class="value" id="cnt-klienti">—</div>
     </div>
+    <div class="card">
+      <div class="label">In Progress</div>
+      <div class="value" id="cnt-inprogress" style="color:#ff7043">—</div>
+      <div class="sub">dealů bez měsíce</div>
+    </div>
+    <div class="card">
+      <div class="label">Hodnota In Progress</div>
+      <div class="value" id="cnt-inprogress-value" style="color:#ff7043">—</div>
+      <div class="sub">Kč</div>
+    </div>
   </div>
 
   <div class="charts">
@@ -134,6 +166,18 @@
     <div class="chart-box">
       <h3>Top klienti podle provize</h3>
       <canvas id="chartKlient"></canvas>
+    </div>
+    <div class="chart-box">
+      <h3>Počet dealů podle měsíce</h3>
+      <canvas id="chartDealsCount"></canvas>
+    </div>
+    <div class="chart-box">
+      <h3>Hodnota dealů podle měsíce</h3>
+      <canvas id="chartDealsValue"></canvas>
+    </div>
+    <div class="chart-box">
+      <h3>Stav dealů — In Progress vs. Uzavřené</h3>
+      <canvas id="chartInProgress"></canvas>
     </div>
   </div>
 
@@ -151,7 +195,7 @@
 <script>
 const CSV_URL = 'https://docs.google.com/spreadsheets/d/1nQhIBBd8k2bp0I1HSNcOAqtkfFKlKsGjraBJQMqEP4Y/gviz/tq?tqx=out:csv&gid=609760556';
 const INTERVAL = 30;
-let chartMonth, chartKlient, countdown;
+let chartMonth, chartKlient, chartDealsCount, chartDealsValue, chartInProgress, countdown;
 
 function parseCSV(text) {
   const lines = text.trim().split('\n');
@@ -177,9 +221,17 @@ function fmt(n) {
 }
 
 function renderCards(rows) {
+  const dealValues = rows.map(r => toNum(r.Deal));
+  const totalDeal = dealValues.reduce((a,b) => a+b, 0);
+  const avgDeal = rows.length ? totalDeal / rows.length : 0;
+  document.getElementById('cnt-deals-value').textContent = fmt(totalDeal);
+  document.getElementById('cnt-deals-avg').textContent = fmt(avgDeal);
   const provize = rows.map(r => toNum(r.Provize));
   const total = provize.reduce((a,b) => a+b, 0);
   const avg = rows.length ? total/rows.length : 0;
+  const inProgress = rows.filter(r => !r.Month);
+  document.getElementById('cnt-inprogress').textContent = inProgress.length;
+  document.getElementById('cnt-inprogress-value').textContent = fmt(inProgress.reduce((a,r) => a + toNum(r.Deal), 0));
   const klienti = new Set(rows.map(r => r.Klient)).size;
   document.getElementById('cnt-deals').textContent = rows.length;
   document.getElementById('cnt-provize').textContent = fmt(total);
@@ -217,6 +269,36 @@ function renderCharts(rows) {
     },
     options: { plugins: { legend: { position: 'right', labels: { font: { size: 11 } } } } }
   });
+
+  // Počet dealů podle měsíce
+  const countByMonth = {};
+  rows.filter(r => r.Month).forEach(r => {
+    countByMonth[r.Month] = (countByMonth[r.Month]||0) + 1;
+  });
+  if (chartDealsCount) chartDealsCount.destroy();
+  chartDealsCount = new Chart(document.getElementById('chartDealsCount'), {
+    type: 'bar',
+    data: {
+      labels: Object.keys(countByMonth),
+      datasets: [{ label: 'Počet dealů', data: Object.values(countByMonth), backgroundColor: '#34a853', borderRadius: 6 }]
+    },
+    options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+  });
+
+  // Hodnota dealů podle měsíce
+  const valueByMonth = {};
+  rows.filter(r => r.Month).forEach(r => {
+    valueByMonth[r.Month] = (valueByMonth[r.Month]||0) + toNum(r.Deal);
+  });
+  if (chartDealsValue) chartDealsValue.destroy();
+  chartDealsValue = new Chart(document.getElementById('chartDealsValue'), {
+    type: 'bar',
+    data: {
+      labels: Object.keys(valueByMonth),
+      datasets: [{ label: 'Hodnota (Kč)', data: Object.values(valueByMonth), backgroundColor: '#fbbc04', borderRadius: 6 }]
+    },
+    options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+  });
 }
 
 function renderTable(rows) {
@@ -226,7 +308,7 @@ function renderTable(rows) {
       <td>${r.Klient}</td>
       <td>${r.Deal}</td>
       <td class="provize">${fmt(toNum(r.Provize))} Kč</td>
-      <td>${r.Month||'—'}</td>
+      <td>${r.Month ? r.Month : '<span style="color:#ff7043;font-weight:600">In Progress</span>'}</td>
     </tr>
   `).join('');
 }
